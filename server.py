@@ -1,14 +1,16 @@
 import torch.nn.functional as F
-from federated.fedavg import aggregate
 import torch
 import socket
 import pickle
 import threading
-from utils.data_utils import get_dataloaders, get_test_dataloader, choose_dataset
+from utils.data_utils import get_test_dataloader, choose_dataset
 from utils.parser import args_parser
 from utils.communication import send_message, receive_message
+from utils.plot import plot_metrics
 from models.cnn_model import CNNModel
 from config import CONFIG
+from federated.fedavg import aggregate
+
 
 #Server có 2 thread 
 # 1 thread để nghe các client regist
@@ -24,7 +26,6 @@ class Server:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(CONFIG["num_clients"])
-        self.conn = None
 
     def update_model(self, client_updates):
         """
@@ -59,11 +60,11 @@ class Server:
         print(self.clients)
         disconnected_clients = []
         for client_id, (client_host, client_port) in self.clients.items():
-            print((client_host, client_port))
+            # print((client_host, client_port))
             try:
                 # print("Vô đây chưa?")
                 client_conn = socket.create_connection((client_host, client_port)) 
-                # print("Chưa create connection được")
+                # print(;"Chưa create connection được")
                 send_message(client_conn, "PING")
                 print("Sent PING")
                 response = receive_message(client_conn)
@@ -72,7 +73,7 @@ class Server:
                 client_conn.close()
             except:
                 disconnected_clients.append(client_id)
-        print(disconnected_clients)
+        # print(disconnected_clients)
         self.clients_connect = self.clients.copy()
         # Loại bỏ client mất kết nối
         for client_id in disconnected_clients:
@@ -105,37 +106,27 @@ class Server:
             except pickle.UnpicklingError:
                 print(f"Failed to unpickle model params from client.")
             client_conn.close()
-        return aggregated_params
-        # for _ in range(len(self.clients)): 
-        #     # self.conn, addr = self.server_socket.accept()
-        #     model_params = receive_message(conn)
-        #     try:
-        #         aggregated_params.append(model_params)
-        #     except pickle.UnpicklingError:
-        #         print(f"Failed to unpickle model params from client.")
-
-        #     conn.close()
-        # return aggregated_params    
-
+        return aggregated_params   
 
     def listen_clients(self):
-        """Lắng nghe các client."""
+        """Lắng nghe các client REGIST."""
         print("Listening for clients...")
         while True:
-            self.conn, addr = self.server_socket.accept()
-            print(f"Connection from {addr}")
+            conn, addr = self.server_socket.accept()
+            # print(f"Connection from {addr}")
 
             try:
-                message = receive_message(self.conn)
-                print(message)
+                message = receive_message(conn)
+                # print(message)
                 if message == "REGIST":
-                    client_info = receive_message(self.conn)
+                    client_info = receive_message(conn)
                     client_id, (client_host, client_port) = list(client_info.items())[0]
                     self.clients[client_id] = (client_host, client_port)
                     print(f"Client {client_id} registered from {(client_host, client_port)}")
 
             except Exception as e:
                 print(f"Error receiving client data: {e}")
+            conn.close()
 
 
     def start(self):
@@ -144,23 +135,25 @@ class Server:
 
         threading.Thread(target=self.listen_clients, daemon=True).start()
 
-        while True:
-            input("Press Enter to start Federated Learning...\n")
+        loss_history = []
+        accuracy_history = []
+        ######################################
+        while input("Press Enter to start Federated Learning...\n") != "exit":
             self.ping_clients()
             client_conns = self.send_model(self.global_model.state_dict())
             client_updates = self.receive_model_updates(client_conns)
             updated_model = self.update_model(client_updates)
             self.global_model.load_state_dict(updated_model)
             loss, accuracy = self.evaluate()
+            loss_history.append(loss)
+            accuracy_history.append(accuracy)
             print(f"Server evaluation: Loss = {loss:.4f}, Accuracy = {accuracy:.2f}%")
+        
+        plot_metrics(loss_history, accuracy_history)
 
 if __name__ == "__main__":
     args = args_parser()
     train_dataset, test_dataset = choose_dataset(args.dataset)
-    # train_dataloader = get_dataloaders(train_dataset, 
-    #                                   CONFIG["num_clients"], 
-    #                                   CONFIG["batch_size"], 
-    #                                   args.iid)
     test_dataloader = get_test_dataloader(test_dataset, 
                                           CONFIG["batch_size"])
 
