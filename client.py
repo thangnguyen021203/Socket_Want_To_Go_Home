@@ -42,7 +42,7 @@ class Client:
                 loss_epoch = loss_fn(output, target)
                 loss_epoch.backward()
                 optimizer.step()
-            print(f"Epoch {epoch}/{CONFIG['epochs']} - Loss: {loss_epoch.item()}")
+            print(f"Epoch {epoch+1}/{CONFIG['epochs']} - Loss: {loss_epoch.item()}")
         # Trả về trạng thái của mô hình sau khi huấn luyện
         return self.model.state_dict()
     
@@ -101,7 +101,7 @@ class Client:
         if server_conn:
             print("Connected to server.")
             self.send_to_server(server_conn,"REGIST")
-            print("Sent Regist")
+            # print("Sent Regist")
             self.send_to_server(server_conn,{self.client_id: (self.client_host, self.client_port)})
             print("Sent client info")
             server_conn.close()
@@ -109,16 +109,19 @@ class Client:
         """
         Server ping.
         """
-        print("Truoc khi tạo connect ping")
+        # print("Truoc khi tạo connect ping")
         client_conn, addr = self.client_socket.accept()
-        print("Sau khi tạo connect ping")
+        # print("Sau khi tạo connect ping")
         
-        data = receive_message(client_conn)
-        print("haha")
+        try:
+            data = receive_message(client_conn)
+            print(f"Client {self.client_id} received: {data}")
+        except Exception as e:
+            print(f"Error receiving message on Client {self.client_id}: {e}")
         print(data)
         if data == "PING":
             self.send_to_server(client_conn,"PONG")
-            print("Pong sent")
+            # print("Pong sent")
         else:
             self.send_to_server(client_conn,"ERROR")
             print("Something went wrong with the server.")
@@ -127,7 +130,7 @@ class Client:
         self.set_model(self.receive_model_from_server(client_conn))
         self.train()
         self.send_to_server(client_conn,self.model.state_dict())
-        # self.disconnect_from_server(client_conn)
+        self.disconnect_from_server(client_conn)
             
         print(f"Client {self.client_id} finished training and disconnected.")
 
@@ -138,5 +141,5 @@ if __name__ == "__main__":
                                       CONFIG["num_clients"], 
                                       CONFIG["batch_size"], 
                                       args.iid)
-    client = Client(client_id=args.client_id, model=CNNModel(),dataset= train_dataloader[args.client_id],client_port=0)
+    client = Client(client_id=args.client_id, model=CNNModel(),dataset= train_dataloader[args.client_id])
     client.start()

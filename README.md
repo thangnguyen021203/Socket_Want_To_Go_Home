@@ -23,10 +23,10 @@ Chạy và plot về **Training Accuracy, Total training time, encryption time, 
 
 
 ## Task
-Chọn model theo paper người khác.
-Có cần chạy với nhiều %client khác nhau và plot ra không?
+Chọn model theo paper người khác.\
+Có cần chạy với nhiều %client khác nhau và plot ra không?\
 <!-- Coi lại việc huấn luyện, tại sao hội tụ bị dao động -->
-Chiến lược chọn client như thế nào?
-tích hợp zkP với PairwiseMasking
-đôi khi bị deadlock khi Ping
-tại sao nhiều client chưa được
+Chiến lược chọn client như thế nào?\
+tích hợp zkP với PairwiseMasking\
+đôi khi bị deadlock khi Ping ->*2 clients, 3 clients đã ổn*\
+Chưa plot thời gian tổng hợp, thời gian training\
