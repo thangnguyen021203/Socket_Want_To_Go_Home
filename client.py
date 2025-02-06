@@ -118,7 +118,7 @@ class Client:
             print(f"Client {self.client_id} received: {data}")
         except Exception as e:
             print(f"Error receiving message on Client {self.client_id}: {e}")
-        print(data)
+        # print(data)
         if data == "PING":
             self.send_to_server(client_conn,"PONG")
             # print("Pong sent")

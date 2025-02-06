@@ -28,5 +28,5 @@ Có cần chạy với nhiều %client khác nhau và plot ra không?\
 <!-- Coi lại việc huấn luyện, tại sao hội tụ bị dao động -->
 Chiến lược chọn client như thế nào?\
 tích hợp zkP với PairwiseMasking\
-đôi khi bị deadlock khi Ping ->*2 clients, 3 clients đã ổn*\
+đôi khi bị deadlock khi Ping ->*đã ổn*\
 Chưa plot thời gian tổng hợp, thời gian training\
