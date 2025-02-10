@@ -4,15 +4,22 @@ from utils.parser import args_parser
 from models.cnn_model import CNNModel
 from utils.data_utils import get_dataloaders, choose_dataset
 from utils.communication import send_message, receive_message
+from federated.cipher_utils import generate_prime, random_number, aes_ctr_prg
 from config import CONFIG
 
 class Client:
     def __init__(self, model, dataset, client_id, client_host = "localhost", client_port = 0):
         self.model = model
         self.dataset = dataset
+
         self.client_id = client_id
         self.client_host = client_host
         self.client_port = client_port
+        
+        self.private = None
+        self.pair_private = None
+        self.public = None
+
         self.server_host = CONFIG["server_host"]
         self.server_port = CONFIG["server_port"]
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -94,9 +101,7 @@ class Client:
         Bắt đầu client.
         """
         
-        """
-        Đăng ký client với server.
-        """
+        #Đăng ký client với server.
         server_conn = self.connect_to_server()
         if server_conn:
             print("Connected to server.")
@@ -106,13 +111,16 @@ class Client:
             print("Sent client info")
             server_conn.close()
         
-        """
-        Server ping.
-        """
+        #Giai đoạn set up
+        # self.private = random_number()
+        # self.pair_private = random_number()
+        # self.public = 
+
+
+        #Server ping.
         # print("Truoc khi tạo connect ping")
         client_conn, addr = self.client_socket.accept()
         # print("Sau khi tạo connect ping")
-        
         try:
             data = receive_message(client_conn)
             print(f"Client {self.client_id} received: {data}")
@@ -126,9 +134,13 @@ class Client:
             self.send_to_server(client_conn,"ERROR")
             print("Something went wrong with the server.")
         client_conn.close()
+
+        # Nhận mô hình từ server và huấn luyện.
         client_conn, addr = self.client_socket.accept()
         self.set_model(self.receive_model_from_server(client_conn))
         self.train()
+
+        # Gửi trạng thái mô hình sau khi huấn luyện tới server.
         self.send_to_server(client_conn,self.model.state_dict())
         self.disconnect_from_server(client_conn)
             
