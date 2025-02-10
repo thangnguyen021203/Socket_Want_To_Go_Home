@@ -7,6 +7,7 @@ from utils.data_utils import get_test_dataloader, choose_dataset
 from utils.parser import args_parser
 from utils.communication import send_message, receive_message
 from utils.plot import plot_metrics
+from federated.cipher_utils import generate_prime, random_number, aes_ctr_prg
 from models.cnn_model import CNNModel
 from config import CONFIG
 from federated.fedavg import aggregate
@@ -20,40 +21,12 @@ class Server:
         self.global_model = global_model
         self.test_dataloader = test_dataloader
         self.clients = {}
-        self.clients_connect = {}
+        self.client_active = {}
         self.host = CONFIG["server_host"]
         self.port = CONFIG["server_port"]
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(CONFIG["num_clients"])
-
-    def update_model(self, client_updates):
-        """
-        Gọi hàm aggregate để tổng hợp mô hình toàn cục.
-        """
-        return aggregate(self.global_model, client_updates)
-
-    def evaluate(self):
-        """
-        Đánh giá mô hình toàn cục.
-        """
-        self.global_model.eval()
-        total_loss = 0
-        correct = 0
-        total = 0
-
-        # Giả sử dữ liệu validation có sẵn trên một worker (hoặc tập trung)
-        for data, labels in self.test_dataloader:
-            output = self.global_model(data)
-            loss = F.cross_entropy(output, labels)
-            total_loss = total_loss + loss.item()
-            _, predicted = torch.max(output, 1)
-            correct = correct + (predicted == labels).sum().item()
-            total = total + labels.size(0)
-
-        total_loss = total_loss / total
-        accuracy = 100.0 * correct / total
-        return loss, accuracy
     
     def ping_clients(self):
         """Ping tất cả client để kiểm tra kết nối. Loại bỏ client mất kết nối."""
@@ -74,17 +47,36 @@ class Server:
             except:
                 disconnected_clients.append(client_id)
         # print(disconnected_clients)
-        self.clients_connect = self.clients.copy()
+        self.client_active = self.clients.copy()
         # Loại bỏ client mất kết nối
         for client_id in disconnected_clients:
-            del self.clients_connect[client_id]
-        print(f"Active clients after ping: {list(self.clients_connect.keys())}")
+            del self.client_active[client_id]
+        print(f"Active clients after ping: {list(self.client_active.keys())}")
     
+    def setup(self):
+        """
+        Server tạo ngẫu nhiên số g và tạo ngẫu nhiên số nguyên tố p1.
+        Server gửi danh sách thông tin client_active và g&p1 cho từng client đang active.
+        """
+        g = random_number()
+        p1 = generate_prime(random_number())
+
+        for client in self.client_active:
+            client_ip, client_port = self.client_active[client]
+            client_conn = socket.create_connection((client_ip, client_port))
+            send_message(client_conn, (self.client_active, g, p1))
+            client_conn.close()
+        
+        
+
+
+
+
     def send_model(self, model):
         """Gửi mô hình đến client để huấn luyện."""
         client_conns = []
-        for client_id in self.clients_connect:
-            client_ip, client_port = self.clients_connect[client_id] 
+        for client_id in self.client_active:
+            client_ip, client_port = self.client_active[client_id] 
 
             try:
                 client_conn = socket.create_connection((client_ip, client_port)) 
@@ -107,6 +99,33 @@ class Server:
                 print(f"Failed to unpickle model params from client.")
             client_conn.close()
         return aggregated_params   
+
+    def update_model(self, client_updates):
+        """
+        Gọi hàm aggregate để tổng hợp mô hình toàn cục.
+        """
+        return aggregate(self.global_model, client_updates)
+
+    def evaluate(self):
+        """
+        Đánh giá mô hình toàn cục.
+        """
+        self.global_model.eval()
+        total_loss = 0
+        correct = 0
+        total = 0
+
+        for data, labels in self.test_dataloader:
+            output = self.global_model(data)
+            loss = F.cross_entropy(output, labels)
+            total_loss = total_loss + loss.item()
+            _, predicted = torch.max(output, 1)
+            correct = correct + (predicted == labels).sum().item()
+            total = total + labels.size(0)
+
+        total_loss = total_loss / total
+        accuracy = 100.0 * correct / total
+        return loss, accuracy
 
     def listen_clients(self):
         """Lắng nghe các client REGIST."""
@@ -139,10 +158,21 @@ class Server:
         accuracy_history = []
         ######################################
         while input("Press Enter to start Federated Learning...\n") != "exit":
+            # Ping clients xác định clients nào còn active trước khi thực hiện train
             self.ping_clients()
+
+            # Server gửi thông tin client cho các client và truyền thêm tham số chung g và p1 cho mỗi client
+            
+
+
+            # Gửi mô hình cho các client và nhận các bản cập nhật từ chúng
             client_conns = self.send_model(self.global_model.state_dict())
             client_updates = self.receive_model_updates(client_conns)
+            
+            # Tổng hợp các bản cập nhật từ client và cập nhật mô hình toàn cục
             updated_model = self.update_model(client_updates)
+            
+            # Cập nhật mô hình toàn cục và đánh giá
             self.global_model.load_state_dict(updated_model)
             loss, accuracy = self.evaluate()
             loss_history.append(loss)

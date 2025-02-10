@@ -11,5 +11,7 @@ CONFIG = {
     "convergence_threshold": 0.01,
     "num_client_training": 2,
     "server_host": "localhost",
-    "server_port": 5555
+    "server_port": 5555,
+    "trusted_server_host": "localhost",
+    "trusted_server_port": 5556
 }
