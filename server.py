@@ -51,7 +51,7 @@ class Server:
             except:
                 print(f"Fail to connect to client {client_id} to send global model.")
         
-        for client_id in connections:
+        for client_id in connections.keys():
             try:
                 local_model, num_data = receive_message(connections[client_id])
                 client_updates.append((local_model, num_data))
@@ -92,7 +92,7 @@ class Server:
 
     def start(self):
         """Bắt đầu server."""
-        print(f"Server started on {self.host}:{self.port}")
+        print(f"Server started on {self.server_host}:{self.server_port}")
 
         loss_history = []
         accuracy_history = []
@@ -100,7 +100,7 @@ class Server:
         while input("Press Enter to start Federated Learning...\n") != "exit":
            # Nhận danh sách clients_active từ Trusted Server
             self.recieve_activeClients()
-
+            print("Recieved active clients from Trusted Server.")
             # bắt đầu quá trình train FL
             self.train()
 

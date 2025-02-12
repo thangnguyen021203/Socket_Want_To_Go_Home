@@ -66,7 +66,7 @@ class TrustedServer:
                     self.clients_active[client_id] = (client_host, client_port, public, pair_PRG)
                 client_conn.close()
             except:
-                print("Something wrong when connect to client to Ping")
+                print(f"Something wrong when connect to client {client_id} to Ping")
         # Clients còn active sau khi ping
         ## Sau này sẽ chọn số lượng cụ thể clients trong số clients active ở đây
 
@@ -95,7 +95,7 @@ class TrustedServer:
         Gửi danh sách client active({clientid: (client_host, client_port, public, pair_PRG)}) cho từng client
         """
         for client_id in self.clients_active:
-            client_host, client_port, _ = self.clients_active[client_id]
+            client_host, client_port, _, _ = self.clients_active[client_id]
             client_conn = socket.create_connection((client_host, client_port))
             send_message(client_conn, self.clients_active)
             client_conn.close()
@@ -104,17 +104,32 @@ class TrustedServer:
         """
         Tối thiểu x client để bắt đầu vòng tổng hợp mới.
         """
-        count = 0            
-        while True:
-            TrustedServer_conn = self.TrustedServer_socket.accept()
-            msg = receive_message(TrustedServer_conn)
-            TrustedServer_conn.close()
-            if msg == "Done":
-                count += 1
-            if count == len(self.clients_active)-2:
-                print("Minimum clients has received global model!")
-                print("Ready for new training session <3")
-                break
+        count = 0
+        for client_id in self.clients_active:
+            client_host, client_port, _, _ = self.clients_active[client_id]
+            try:
+                client_conn = socket.create_connection((client_host, client_port))
+                if client_conn:
+                    msg = receive_message(client_conn)
+                    client_conn.close()
+                    if msg == "Done":
+                        count += 1
+                    if count == len(self.clients_active)-2:
+                        print("Minimum clients has received global model!")
+                        print("Ready for new training session <3")
+                        break 
+            except:
+                print(f"Can connect to client {client_id} to check condition.")
+        # while True:
+        #     TrustedServer_conn, _ = self.TrustedServer_socket.accept()
+        #     msg = receive_message(TrustedServer_conn)
+        #     TrustedServer_conn.close()
+        #     if msg == "Done":
+        #         count += 1
+        #     if count == len(self.clients_active)-2:
+        #         print("Minimum clients has received global model!")
+        #         print("Ready for new training session <3")
+        #         break
 
     
     def start(self):
