@@ -1,33 +1,26 @@
-import time
-import matplotlib.pyplot as plt
 import torch
-from config import CONFIG
-from concurrent.futures import ThreadPoolExecutor
-import numpy as np
-from utils.plot import plot_metrics
+import copy
 
-def aggregate(global_model, client_updates):
+def aggregate(client_updates):
     """
-    Tổng hợp các tham số mô hình từ các client bằng cách tính trung bình trọng số.
-    
+    Tổng hợp các tham số mô hình từ các client bằng cách tính trung bình có trọng số.
+
     Args:
-        global_model: Mô hình toàn cục (torch.nn.Module).
-        client_updates: Danh sách state_dict từ các client.
-    
+        client_updates: Danh sách các tuple (state_dict, num_data) từ các client.
+
     Returns:
         state_dict: Trạng thái mô hình đã tổng hợp.
     """
-    avg_state_dict = client_updates[0].copy()
+    # Lấy state_dict đầu tiên để làm khung lưu kết quả
+    avg_state_dict = copy.deepcopy(client_updates[0][0])
 
-    # Tính trung bình cho từng tham số trong mô hình
+    # Tổng số dữ liệu từ tất cả client
+    total_samples = sum(num_data for _, num_data in client_updates)
+
+    # Duyệt qua từng tham số trong state_dict
     for key in avg_state_dict.keys():
-        avg_state_dict[key] = torch.mean(
-            torch.stack([client[key] for client in client_updates]), dim=0
-        )
-    
-    # Trả về trạng thái mô hình đã tổng hợp
-    return avg_state_dict 
+        avg_state_dict[key] = sum(
+            (state_dict[key] * num_data) for state_dict, num_data in client_updates
+        ) / total_samples  # Chia theo tổng số dữ liệu để lấy trung bình có trọng số
 
-    # Cập nhật mô hình toàn cục
-    global_model.load_state_dict(avg_state_dict)
-
+    return avg_state_dict
