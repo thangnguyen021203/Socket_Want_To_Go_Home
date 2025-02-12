@@ -50,9 +50,4 @@ Việc cần mở rộng mô hình:
         - Biến số thực thành số nguyên (optional)
 	    - Modify các tham số: tham số mới = tham số cũ + toàn bộ pair_PRG (với id của client < id của pair) - toàn bộ pair_PRG (với id của client > id của pair) + self_PRG
 
-***Câu hỏi ở đây là:***
-1. PRG sinh ra số lớn đến mức nào, nằm trong khoảng nào, làm sao biết được khoảng nó sẽ nằm do mỗi tham só mô hình sẽ có độ lớn khác nhau
-2. Server gửi thông tin các client khác cho mỗi client(sau khi ping). Tức là chỉ gửi cho những thằng đang online thôi phải không?
-3. Client random 2 số private với pair_private. Thì 2 số này là số nguyên có độ lớn như thế nào? Hay random lớn nhỏ bao nhiêu cũng được
-4. Mỗi client gửi public cho trusted server, gửi thêm id của client. Thì id ở đây là id của chính client đang gửi phải không. Và id này có tác dụng gì?
-5. g và p1 không đổi. Vậy server sẽ gửi tụi nó khi tụi nó đăng kí được không? Rồi server mới ping để kiểm tra coi thằng nào còn online để train. Nếu làm vậy thì cos ảnh hưởng gì không so với gửi g và p1 cho client sau khi ping?
+

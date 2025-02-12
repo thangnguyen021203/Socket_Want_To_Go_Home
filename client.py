@@ -4,6 +4,7 @@ from utils.parser import args_parser
 from models.cnn_model import CNNModel
 from utils.data_utils import get_dataloaders, choose_dataset
 from utils.communication import send_message, receive_message
+from models.utils import compare_state_dicts, modify_state_dicts
 from federated.cipher_utils import generate_prime, random_number, aes_ctr_prg
 from config import CONFIG
 
@@ -11,17 +12,26 @@ class Client:
     def __init__(self, model, dataset, client_id, client_host = "localhost", client_port = 0):
         self.model = model
         self.dataset = dataset
+        self.dataset_size = len(dataset.dataset)
 
         self.client_id = client_id
         self.client_host = client_host
         self.client_port = client_port
         
-        self.private = None
-        self.pair_private = None
+        self.g = None
+        self.p1 = None
+        self.private = random_number()
+        self.pair_private = random_number()
         self.public = None
+        self.pair_PRG = None
+        self.self_PRG = None
+
+        self.neighbors = None
 
         self.server_host = CONFIG["server_host"]
         self.server_port = CONFIG["server_port"]
+        self.TrustedServer_host = CONFIG["trusted_server_host"]
+        self.TrustedServer_port = CONFIG["trusted_server_port"]
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.bind((self.client_host, self.client_port))
         self.client_port = self.client_socket.getsockname()[1]  # Lấy port mà client đang sử dụng
@@ -32,7 +42,7 @@ class Client:
         """Cập nhật mô hình cho client từ server."""
         self.model.load_state_dict(model)
 
-    def train(self):
+    def train_local(self):
         """
         Huấn luyện mô hình trên dữ liệu của client.
         """
@@ -53,105 +63,107 @@ class Client:
         # Trả về trạng thái của mô hình sau khi huấn luyện
         return self.model.state_dict()
     
-    def send_to_server(self, conn, message):
+    def regist(self):
         """
-        Gửi message tới server.
+        Client đăng kí thông tin với Trusted Server.
+        """
+        TrustedServer_conn = socket.create_connection((self.TrustedServer_host,self.TrustedServer_port))
+        try:
+            send_message(TrustedServer_conn, {self.client_id: (self.client_host, self.client_port)})
+            print("Sent info to Trusted Server.")
+            self.g, self.p1 = receive_message(TrustedServer_conn)
+            print("Receiving g and p1")
+            TrustedServer_conn.close()
+            self.public = (self.g % self.p1)**(self.pair_private % self.p1)
+        except:
+            print(f"Regist Error.")
+
+    def wait_ping(self):
+        """
+        Chờ Trusted Server ping và gửi public cho Trusted Server.
         """
         try:
-            send_message(conn, message)
-        except Exception as e:
-            print(f"Client {self.client_id} failed to send message to server.")
-            
+            client_conn, addr = self.client_socket.accept()
+            send_message(client_conn, (self.public, self.pair_PRG))
+            client_conn.close()
+        except: 
+            print("Error in sending public to Trusted Server.")
     
-    def receive_model_from_server(self, conn):
+    def recieve_neighbors(self):
         """
-        Nhận mô hình từ server.
+        Nhận danh sách các hàng xóm ({clientid: (client_host, client_port, public, pair_PRG)}) từ Trusted Server
         """
         try:
-            model = receive_message(conn)
-        except Exception as e:
-            print(f"Client {self.client_id} failed to receive model from server.")
-            return None
-        return model
-    
-    def connect_to_server(self): 
+            client_conn, addr = self.client_socket.accept()
+            self.neighbors = receive_message(client_conn)
+            client_conn.close()
+        except: 
+            print("Error in recieving neighbors.")
+
+    def train(self):
         """
-        Kết nối tới server.
-        """
-        try:
-            server_socket = socket.create_connection((self.server_host, self.server_port), timeout=2)
-        except Exception as e:
-            print(f"Client {self.client_id} failed to connect to server.")
-            return None
-        return server_socket
-    
-    def disconnect_from_server(self, conn):
-        """
-        Ngắt kết nối tới server.
+        Nhận mô hình, train, gửi lại mô hình sau khi train.
         """
         try:
-            conn.close()
-        except Exception as e:
-            print(f"Client {self.client_id} failed to disconnect from server.")
-            return False
-        return True
+            client_conn, addr = self.client_socket.accept()
+            # Nhận tham số mô hình từ server
+            self.set_model(receive_message(client_conn))
+            # Huấn luyện mô hình trên dữ liệu private
+            self.train_local()
+            # Modify tham số mô hình
+            modify_state_dicts(self.model.state_dict(), self.client_id, self.neighbors, self.self_PRG)
+            # Gửi local model cùng với số lượng dữ liệu
+            send_message(client_conn, (self.model.state_dict(), self.dataset_size))
+            # Nhận tham số mô hình sau khi tổng hợp
+            updated_model = receive_message(client_conn)
+            client_conn.close()
+            # Trả về mô hình sau khi cập nhật để kiểm tra điều kiện vòng mới
+            return updated_model
+        except: 
+            print("Error in sending public to Trusted Server.")
     
+    def condition_NewTraining(self, updated_model):
+        """
+        Xem xét có nhận về đúng mô hình từ server không để bắt đầu vòng tổng hợp mới.
+        """
+        try:
+            TrustedServer_conn = socket.create_connection((self.TrustedServer_host, self.TrustedServer_port))
+            if compare_state_dicts(self.model.state_dict(), updated_model):
+                send_message(TrustedServer_conn, "Done")
+            else:
+                send_message(TrustedServer_conn, "Server do wrong things!")
+            TrustedServer_conn.close()
+        except:
+            print("Fail Connection to Trusted Server!")
+
     def start(self):
         """
         Bắt đầu client.
         """
         
-        #Đăng ký client với server.
-        server_conn = self.connect_to_server()
-        if server_conn:
-            print("Connected to server.")
-            self.send_to_server(server_conn,"REGIST")
-            # print("Sent Regist")
-            self.send_to_server(server_conn,{self.client_id: (self.client_host, self.client_port)})
-            print("Sent client info")
-            server_conn.close()
-        
-        #Giai đoạn set up
-        # self.private = random_number()
-        # self.pair_private = random_number()
-        # self.public = 
-
-
-        #Server ping.
-        # print("Truoc khi tạo connect ping")
-        client_conn, addr = self.client_socket.accept()
-        # print("Sau khi tạo connect ping")
-        try:
-            data = receive_message(client_conn)
-            print(f"Client {self.client_id} received: {data}")
-        except Exception as e:
-            print(f"Error receiving message on Client {self.client_id}: {e}")
-        # print(data)
-        if data == "PING":
-            self.send_to_server(client_conn,"PONG")
-            # print("Pong sent")
-        else:
-            self.send_to_server(client_conn,"ERROR")
-            print("Something went wrong with the server.")
-        client_conn.close()
-
-        # Nhận mô hình từ server và huấn luyện.
-        client_conn, addr = self.client_socket.accept()
-        self.set_model(self.receive_model_from_server(client_conn))
-        self.train()
-
-        # Gửi trạng thái mô hình sau khi huấn luyện tới server.
-        self.send_to_server(client_conn,self.model.state_dict())
-        self.disconnect_from_server(client_conn)
+        # Đăng ký client với Trusted Server.
+        self.regist()
+        print("Regist successfully.")
+        # Chờ Trusted Server ping.
+        self.wait_ping()
+        # Nhận danh sách neighbor.
+        self.recieve_neighbors()
+        print("Recieving neighbors successfully.")
+        # Bắt đầu quá trình training FL.
+        updated_model = self.train()
+        print("Training FL success fully")
+        # Kiểm tra mô hình nhận về từ server coi có đúng không
+        self.condition_NewTraining(updated_model)
             
         print(f"Client {self.client_id} finished training and disconnected.")
 
 if __name__ == "__main__":
     args = args_parser()
-    train_dataset, test_dataset = choose_dataset(args.dataset)
+    train_dataset, _ = choose_dataset(args.dataset)
     train_dataloader = get_dataloaders(train_dataset, 
                                       CONFIG["num_clients"], 
                                       CONFIG["batch_size"], 
                                       args.iid)
     client = Client(client_id=args.client_id, model=CNNModel(),dataset= train_dataloader[args.client_id])
+    # print(len(train_dataloader[args.client_id].dataset))
     client.start()

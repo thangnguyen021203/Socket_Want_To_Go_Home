@@ -5,6 +5,7 @@ from utils.parser import args_parser
 from federated.cipher_utils import generate_prime, random_number, aes_ctr_prg
 import threading
 
+# Trusted Server có 2 luồng: 1 luồng luôn lắng nghe client regist, 1 luồng flow
 class TrustedServer:
     def __init__(self):
         self.TrustedServer_host = CONFIG["trusted_server_host"]
@@ -41,10 +42,9 @@ class TrustedServer:
             # gửi public g và p1 cho client
             try:
                 send_message(conn, (self.g,self.p1))
+                conn.close()
             except Exception as e:
                 print(f"Error send g and p1 to client {client_id}")
-
-            conn.close()
 
     
     def ping_clients(self):
@@ -62,8 +62,8 @@ class TrustedServer:
                 if not response:
                     print(f"Client {client_id} not respone Ping")
                 else: 
-                    public = response
-                    self.clients_active[client_id] = (client_host, client_port, public)
+                    public, pair_PRG = response
+                    self.clients_active[client_id] = (client_host, client_port, public, pair_PRG)
                 client_conn.close()
             except:
                 print("Something wrong when connect to client to Ping")
@@ -82,7 +82,7 @@ class TrustedServer:
 
         list_chosen_clients = []
         for client_id in self.clients_active:
-            client_host, client_port, public = self.clients_active[client_id]
+            client_host, client_port, _, _ = self.clients_active[client_id]
             list_chosen_clients.append((client_id, client_host, client_port))
 
         send_message(server_conn, list_chosen_clients)
@@ -92,7 +92,7 @@ class TrustedServer:
     
     def sendClient_ClientsActive(self):
         """
-        Gửi danh sách client active({clientid: (client_host, client_port, public)}) cho từng client
+        Gửi danh sách client active({clientid: (client_host, client_port, public, pair_PRG)}) cho từng client
         """
         for client_id in self.clients_active:
             client_host, client_port, _ = self.clients_active[client_id]
@@ -101,6 +101,9 @@ class TrustedServer:
             client_conn.close()
 
     def condition_NewTraining(self):
+        """
+        Tối thiểu x client để bắt đầu vòng tổng hợp mới.
+        """
         count = 0            
         while True:
             TrustedServer_conn = self.TrustedServer_socket.accept()
