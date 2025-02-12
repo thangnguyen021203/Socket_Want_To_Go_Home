@@ -24,7 +24,7 @@ class Client:
         self.pair_private = random_number()
         self.public = None
         self.pair_PRG = None
-        self.self_PRG = None
+        self.self_PRG = aes_ctr_prg(self.private)
 
         self.neighbors = None
 
@@ -68,6 +68,7 @@ class Client:
         Client đăng kí thông tin với Trusted Server.
         """
         TrustedServer_conn = socket.create_connection((self.TrustedServer_host,self.TrustedServer_port))
+        # send_message(TrustedServer_conn, "REGIST")
         try:
             send_message(TrustedServer_conn, {self.client_id: (self.client_host, self.client_port)})
             print("Sent info to Trusted Server.")
@@ -75,6 +76,7 @@ class Client:
             print("Receiving g and p1")
             TrustedServer_conn.close()
             self.public = (self.g % self.p1)**(self.pair_private % self.p1)
+            self.pair_PRG = aes_ctr_prg((self.public % self.p1)**(self.pair_private % self.p1))
         except:
             print(f"Regist Error.")
 
@@ -83,8 +85,11 @@ class Client:
         Chờ Trusted Server ping và gửi public cho Trusted Server.
         """
         try:
+            print("Wait for ping")
             client_conn, addr = self.client_socket.accept()
-            send_message(client_conn, (self.public, self.pair_PRG))
+            ping_msg = receive_message(client_conn)
+            if ping_msg == "PING":
+                send_message(client_conn, (self.public, self.pair_PRG))
             client_conn.close()
         except: 
             print("Error in sending public to Trusted Server.")
@@ -111,7 +116,10 @@ class Client:
             # Huấn luyện mô hình trên dữ liệu private
             self.train_local()
             # Modify tham số mô hình
-            modify_state_dicts(self.model.state_dict(), self.client_id, self.neighbors, self.self_PRG)
+            try:
+                modify_state_dicts(self.model.state_dict(), self.client_id, self.neighbors, self.self_PRG)
+            except:
+                print("Error in modifying model params")
             # Gửi local model cùng với số lượng dữ liệu
             send_message(client_conn, (self.model.state_dict(), self.dataset_size))
             # Nhận tham số mô hình sau khi tổng hợp
@@ -120,19 +128,20 @@ class Client:
             # Trả về mô hình sau khi cập nhật để kiểm tra điều kiện vòng mới
             return updated_model
         except: 
-            print("Error in sending public to Trusted Server.")
+            print("Error in sending training to Trusted Server.")
     
     def condition_NewTraining(self, updated_model):
         """
         Xem xét có nhận về đúng mô hình từ server không để bắt đầu vòng tổng hợp mới.
         """
         try:
-            TrustedServer_conn = socket.create_connection((self.TrustedServer_host, self.TrustedServer_port))
+            client_conn, _ = self.client_socket.accept()
+            # TrustedServer_conn = socket.create_connection((self.TrustedServer_host, self.TrustedServer_port))
             if compare_state_dicts(self.model.state_dict(), updated_model):
-                send_message(TrustedServer_conn, "Done")
+                send_message(client_conn, "Done")
             else:
-                send_message(TrustedServer_conn, "Server do wrong things!")
-            TrustedServer_conn.close()
+                send_message(client_conn, "Server do wrong things!")
+            client_conn.close()
         except:
             print("Fail Connection to Trusted Server!")
 

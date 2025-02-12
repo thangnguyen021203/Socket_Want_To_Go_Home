@@ -3,7 +3,7 @@ import socket
 CONFIG = {
     "num_clients": 20,
     "batch_size": 32,
-    "epochs": 20,
+    "epochs": 5,
     "lr": 0.01,
     "dataset": "MNIST",
     "use_secret_sharing": True,  # Sử dụng PySyft để bảo mật
