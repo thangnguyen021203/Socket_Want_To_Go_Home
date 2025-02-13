@@ -103,7 +103,6 @@ class Server:
             print("Recieved active clients from Trusted Server.")
             # bắt đầu quá trình train FL
             self.train()
-
             # đánh giá model
             loss, accuracy = self.evaluate()
             loss_history.append(loss)
