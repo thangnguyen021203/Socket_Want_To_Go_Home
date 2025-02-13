@@ -48,8 +48,14 @@ class TrustedServer:
 
     
     def ping_clients(self):
-        """Ping tất cả client để kiểm tra kết nối. Loại bỏ client mất kết nối."""
+        """
+        Ping tất cả client để kiểm tra kết nối. 
+        Loại bỏ client mất kết nối.
+        Gửi danh sách neighbor cho từng client active.
+        """
         print(self.clients)
+        list_conn = []
+        self.clients_active = {} # reset danh sách client actives
         for client_id, (client_host, client_port) in self.clients.items():
             # print((client_host, client_port))
             try:
@@ -64,13 +70,22 @@ class TrustedServer:
                 else: 
                     public, pair_PRG = response
                     self.clients_active[client_id] = (client_host, client_port, public, pair_PRG)
-                client_conn.close()
+                list_conn.append((client_conn, client_id))
             except:
                 print(f"Something wrong when connect to client {client_id} to Ping")
         # Clients còn active sau khi ping
         ## Sau này sẽ chọn số lượng cụ thể clients trong số clients active ở đây
-
+        
         print(f"Active clients after ping: {list(self.clients_active.keys())}")
+
+        for client_conn, client_id in list_conn:
+            try:
+                send_message(client_conn, self.clients_active)
+                print(f"Sent neighbor to client {client_id}")
+            except:
+                print(f"Fail to send neighbor to client {client_id}")
+            client_conn.close()
+
     
 
     def sendServer_ClientsActive(self):
@@ -117,7 +132,8 @@ class TrustedServer:
                     if count == len(self.clients_active)-2:
                         print("Minimum clients has received global model!")
                         print("Ready for new training session <3")
-                        break 
+                        print("--------------------------------------------------")
+                        
             except:
                 print(f"Can connect to client {client_id} to check condition.")
         # while True:
@@ -145,7 +161,7 @@ class TrustedServer:
             # gửi danh sách clients đã chọn cho server
             self.sendServer_ClientsActive()
             # gửi danh sách clients đã chọn cho từng client trong danh sách
-            self.sendClient_ClientsActive()
+            # self.sendClient_ClientsActive()
             # chờ thông báo client đã nhận global sau khi train
             self.condition_NewTraining()
     

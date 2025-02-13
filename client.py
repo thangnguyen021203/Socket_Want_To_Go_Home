@@ -80,7 +80,7 @@ class Client:
         except:
             print(f"Regist Error.")
 
-    def wait_ping(self):
+    def wait_ping_and_recieve_neighbors(self):
         """
         Chờ Trusted Server ping và gửi public cho Trusted Server.
         """
@@ -90,20 +90,21 @@ class Client:
             ping_msg = receive_message(client_conn)
             if ping_msg == "PING":
                 send_message(client_conn, (self.public, self.pair_PRG))
+                self.neighbors = receive_message(client_conn)
             client_conn.close()
         except: 
             print("Error in sending public to Trusted Server.")
     
-    def recieve_neighbors(self):
-        """
-        Nhận danh sách các hàng xóm ({clientid: (client_host, client_port, public, pair_PRG)}) từ Trusted Server
-        """
-        try:
-            client_conn, addr = self.client_socket.accept()
-            self.neighbors = receive_message(client_conn)
-            client_conn.close()
-        except: 
-            print("Error in recieving neighbors.")
+    # def recieve_neighbors(self):
+    #     """
+    #     Nhận danh sách các hàng xóm ({clientid: (client_host, client_port, public, pair_PRG)}) từ Trusted Server
+    #     """
+    #     try:
+    #         client_conn, addr = self.client_socket.accept()
+    #         self.neighbors = receive_message(client_conn)
+    #         client_conn.close()
+    #     except: 
+    #         print("Error in recieving neighbors.")
 
     def train(self):
         """
@@ -138,9 +139,9 @@ class Client:
             client_conn, _ = self.client_socket.accept()
             # TrustedServer_conn = socket.create_connection((self.TrustedServer_host, self.TrustedServer_port))
             if compare_state_dicts(self.model.state_dict(), updated_model):
-                send_message(client_conn, "Done")
+                send_message(client_conn, "Server give wrong aggregation!")
             else:
-                send_message(client_conn, "Server do wrong things!")
+                send_message(client_conn, "Done")
             client_conn.close()
         except:
             print("Fail Connection to Trusted Server!")
@@ -154,9 +155,9 @@ class Client:
         self.regist()
         print("Regist successfully.")
         # Chờ Trusted Server ping.
-        self.wait_ping()
+        self.wait_ping_and_recieve_neighbors()
         # Nhận danh sách neighbor.
-        self.recieve_neighbors()
+        # self.recieve_neighbors()
         print("Recieving neighbors successfully.")
         # Bắt đầu quá trình training FL.
         updated_model = self.train()
